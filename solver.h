@@ -2,6 +2,7 @@
 #include "mainwindow.h"
 #include <qchar.h>
 #include <qwidget.h>
+#include <utility>
 #include <vector>
 
 
@@ -18,7 +19,59 @@
 
 using namespace std;
 
+static int calculateConflicts(const std::vector<std::vector<int>>& grid){
+    int conflict = 0;
 
+    for (int i = 0; i<9; i++){
+        int count[10] = {0};
+        for (int j = 0; j<9; j++) count [grid[i][j]] ++;
+        for (int v = 1; v<=9; v++)
+            if (count[v] > 1) conflict += count[v]-1;
+    }
+
+    for (int i = 0; i<9; i++){
+        int count[10] = {0};
+        for (int j = 0; j<9; j++) count [grid[j][i]] ++;
+        for (int v = 1; v<=9; v++)
+            if (count[v] > 1) conflict += count[v]-1;
+    }
+    return conflict;
+}
+
+
+class TabuSolver {
+public:
+    TabuSolver(const std::vector<std::vector<int>>& initial, int maxIter = 100000, int tabuTenure = 500) 
+    : init (initial), maxIter(maxIter) , tabuTenure(tabuTenure){
+        fixed.assign(9, std::vector<bool> (9, false));
+        for (int i = 0; i < 9; ++i)
+            for (int j = 0; j < 9; ++j)
+                if (init[i][j] != 0)
+                    fixed[i][j] = true;
+        
+        for (int sg = 0; sg < 9; ++sg) {
+            int r0 = (sg / 3) * 3;
+            int c0 = (sg % 3) * 3;
+            std::vector<std::pair<int , int>> cells;
+            for (int di = 0 ; di < 3; di++)
+                for (int dj = 0 ; dj < 3; dj++)
+                    cells.emplace_back(r0+di, c0+dj);
+            subgridCells.push_back(cells);
+        }
+
+    }
+
+    vector<vector<int>> solve() {
+        
+    }
+
+private: 
+    vector<vector<int>> init, grid;
+    vector<vector<bool>> fixed;
+    vector<vector<pair<int,int>>> subgridCells;
+    int maxIter, tabuTenure;
+
+};
 
 QString MainWindow::getStyle(int init, int sol, int i, int j){
     int top = (i % 3 == 0) ? 5 : 1;
@@ -72,12 +125,12 @@ void MainWindow::solveSudoku(){
                 }
             }
         }
-        // TabuSolver solver(initial);
-        // auto solution = solver.solve();
+        TabuSolver solver(initial);
+        auto solution = solver.solve();
 
         for (int i = 0; i < 9; ++i)
             for (int j = 0; j < 9; ++j){
-                // gridSpins[i][j]->setText(QString::number(solution[i][j]));
+                gridSpins[i][j]->setText(QString::number(solution[i][j]));
                 auto style = getStyle(initial[i][j], zeros[i][j], i, j);
                 gridSpins[i][j]->setStyleSheet(style);
             }
