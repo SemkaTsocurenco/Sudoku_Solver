@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.10)
 
 project(Sudoku_solver VERSION 0.1 LANGUAGES CXX)
 
@@ -10,14 +10,19 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 
+# Включаем генерацию compile_commands.json
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 find_package(QT NAMES Qt5 REQUIRED COMPONENTS Widgets )
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets )
 
 
+include_directories(./widgets)
 
 set(PROJECT_SOURCES
         main.cpp
         mainwindow.cpp
+        solver.h
 
 )
 
