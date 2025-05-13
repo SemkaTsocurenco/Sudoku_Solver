@@ -37,9 +37,14 @@ public slots:
 
 
 private:
+    bool ok = false;
+
     QWidget *centralWidget;
     QGridLayout *grid;
     QPushButton *solve;
+    QLineEdit* gridSpins[9][9];
+
+    QString getStyle(int init, int sol, int i, int j);
 
 };
 

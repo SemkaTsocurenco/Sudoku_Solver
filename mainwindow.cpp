@@ -78,6 +78,8 @@ void MainWindow::setupUi() {
 
             spin->setStyleSheet(style);
 
+            gridSpins[col][row] = spin;
+
             grid->addWidget(spin, col, row);
         }   
 
