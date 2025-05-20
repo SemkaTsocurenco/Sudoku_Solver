@@ -2,94 +2,119 @@
 #include <iostream>
 #include <qpushbutton.h>
 
+
+
+
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
-    setupUi();
-    setupConnections();
-
-
-}
-
-MainWindow::~MainWindow() {
-}
-
-void MainWindow::setupUi() {
-
-    this->setFixedSize({450,500});
-
+    setFixedSize({450, 550});
     centralWidget = new QWidget(this);
-    this->setCentralWidget(centralWidget);
+    setCentralWidget(centralWidget);
 
-    auto vLay = new QVBoxLayout(centralWidget);
+    auto *vLay = new QVBoxLayout(centralWidget);
 
-    grid = new QGridLayout(centralWidget);
+    // --- выбор размера ---
+    baseSelector = new QSpinBox(this);
+    baseSelector->setRange(2, 10);    // 2→4×4 … 5→25×25
+    baseSelector->setValue(3);       // по умолчанию 9×9
+    baseSelector->setPrefix("base = ");
+    baseSelector->setToolTip("base² = размер стороны поля");
 
-    solve = new QPushButton("SOLVE",this);
-    solve->setStyleSheet(R"(
-        QPushButton {
-            background-color: #2e86de;
-            color: white;
-            font-weight: bold;
-            font-size: 16px;
-            border: none;
-            border-radius: 8px;
-            padding: 8px 16px;
-        }
-        QPushButton:hover {
-            background-color: #1b4f72;
-        }
-        QPushButton:pressed {
-            background-color: #154360;
-        }
-    )");
+    // --- сама сетка ---
+    gridLayout = new QGridLayout();
+    vLay->addWidget(baseSelector);
+    vLay->addSpacing(10);
+    vLay->addLayout(gridLayout);
 
-    vLay->addItem(grid);
-    vLay->addWidget(solve);
-    centralWidget->setLayout(vLay);
+    // --- кнопки ---
+    solveBtn   = new QPushButton("SOLVE",   this);
+    refreshBtn = new QPushButton("REFRESH", this);
 
+    solveBtn  ->setStyleSheet("QPushButton{background:#2e86de;color:#fff;font:16px bold;border-radius:8px;padding:8px;} "
+                              "QPushButton:hover{background:#256e9e;} "
+                              "QPushButton:pressed{background:#154360;}");
+    refreshBtn->setStyleSheet("QPushButton{background:#db2020;color:#fff;font:16px bold;border-radius:8px;padding:8px;} "
+                              "QPushButton:hover{background:#a12424;} "
+                              "QPushButton:pressed{background:#471f1f;}");
 
+    int sizespace = 20 ;
 
-    for (int col = 0 ; col < 9 ; col ++){
-        for (int row = 0 ; row < 9 ; row ++){
-            auto spin = new QLineEdit(this);
-            spin->setValidator(new QIntValidator(1, 9, this));
-            spin->setFixedSize(50, 50);
-            spin->setAlignment(Qt::AlignCenter);
+    vLay->addSpacing(sizespace);
+    vLay->addWidget(solveBtn);
+    vLay->addWidget(refreshBtn);
 
-            int top = (col % 3 == 0) ? 5 : 1;
-            int left = (row % 3 == 0) ? 5 : 1;
-            int right = ((row + 1) % 3 == 0) ? 5 : 1;
-            int bottom = ((col + 1) % 3 == 0) ? 5 : 1;
+    // --- сигналы ---
+    connect(baseSelector, qOverload<int>(&QSpinBox::valueChanged),
+            this, &MainWindow::buildGrid);
+    connect(refreshBtn, &QPushButton::clicked,
+            this, &MainWindow::refreshSudoku);
+    connect(solveBtn,   &QPushButton::clicked,
+            this, &MainWindow::solveSudoku);
+    // // resize mainwindow if baseSelector is changed 
+    // connect(baseSelector, qOverload<int>(&QSpinBox::valueChanged),
+    //         this, &MainWindow::buildGrid);
 
-            QString style = QString(R"(
-                QLineEdit {
-                    background-color:rgb(218, 251, 255);
-                    color: #2e86de;
-                    font-weight: bold;
-                    font-size: 20px;
-                    border-top: %1px solid black;
-                    border-left: %2px solid black;
-                    border-right: %3px solid black;
-                    border-bottom: %4px solid black;
-                    qproperty-alignment: AlignCenter;
-                }
-            )").arg(top).arg(left).arg(right).arg(bottom);
+    buildGrid();   // первичное построение
+}
 
-            spin->setStyleSheet(style);
-
-            gridSpins[col][row] = spin;
-
-            grid->addWidget(spin, col, row);
-        }   
-
+//---------------------------------------------------------
+//  (re)создаём поле соответствующего размера
+//---------------------------------------------------------
+void MainWindow::buildGrid()
+{
+    // убрать прежние QLineEdit-ы
+    QLayoutItem *item;
+    while ((item = gridLayout->takeAt(0)) != nullptr) {
+        delete item->widget();
+        delete item;
     }
+    cells.clear();
+    const int base = baseSelector->value();
+    const int N    = base * base;
 
-    
+    setFixedSize({50 * N,  (N * 50) + (33 * base)});
+
+
+    // ← самый короткий вариант: конструируем готовую матрицу NxN из nullptr
+    cells = QVector<QVector<QLineEdit*>>(N, QVector<QLineEdit*>(N, nullptr));
+
+    for (int r = 0; r < N; ++r)
+        for (int c = 0; c < N; ++c) {
+            auto *edit = new QLineEdit(this);
+            edit->setFixedSize(50, 50);
+            edit->setAlignment(Qt::AlignCenter);
+            edit->setValidator(new QIntValidator(1, N, edit));
+
+            // рамки блоков
+            int top    = (r % base == 0)          ? 3 : 1;
+            int left   = (c % base == 0)          ? 3 : 1;
+            int right  = ((c + 1) % base == 0)    ? 3 : 1;
+            int bottom = ((r + 1) % base == 0)    ? 3 : 1;
+
+            edit->setStyleSheet(QString(
+                "QLineEdit{background:#dafbff;color:#2e86de;"
+                "font-size:20px;font-weight:bold;"
+                "border-top:%1px solid black;border-left:%2px solid black;"
+                "border-right:%3px solid black;border-bottom:%4px solid black;}")
+                .arg(top).arg(left).arg(right).arg(bottom));
+
+            gridLayout->addWidget(edit, r, c);
+            cells[r][c] = edit;
+        }
 }
 
 
-void MainWindow::setupConnections() {
-    connect (solve, &QPushButton::clicked, this , &MainWindow::solveSudoku);
-}
 
+
+
+//---------------------------------------------------------
+//  очистка содержимого ячеек
+//---------------------------------------------------------
+void MainWindow::refreshSudoku()
+{
+    for (auto &row : cells)
+        for (auto *e : row)
+            e->clear();
+}

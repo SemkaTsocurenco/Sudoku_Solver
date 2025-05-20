@@ -16,7 +16,7 @@
 #include <QPushButton>
 #include <QMessageBox>
 #include <qpushbutton.h>
-
+#include <omp.h>       
 
 
 
@@ -25,27 +25,38 @@ class MainWindow : public QMainWindow {
 
 public:
     explicit MainWindow(QWidget *parent = nullptr);
-    ~MainWindow();
-
-
-private slots:
-    void setupUi();
-    void setupConnections();
+    ~MainWindow() override = default;
 
 public slots:
-    void solveSudoku();
+    void buildGrid();          // (re)создание поля
+    void refreshSudoku();      // очистка
+    void solveSudoku();        // вызов решателя (пустая заглушка)
 
 
 private:
     bool ok = false;
+    QString style;
 
     QWidget *centralWidget;
-    QGridLayout *grid;
-    QPushButton *solve;
+    QGridLayout *gridLayout;
+    QSpinBox *baseSelector  = nullptr;
+
+    QPushButton *solveBtn;
+    QPushButton *refreshBtn;
     QLineEdit* gridSpins[9][9];
 
-    QString getStyle(int init, int sol, int i, int j);
+    QString getStyle(int initVal,  // было ли число дано изначально
+                             int row, int col,
+                             int base);
+
+    QVector<QVector<QLineEdit*>> cells;   // [row][col]
 
 };
 
+
+
 #endif // MAINWINDOW_H
+
+
+
+

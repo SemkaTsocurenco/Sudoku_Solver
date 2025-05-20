@@ -4,6 +4,7 @@
 #include <qwidget.h>
 #include <utility>
 #include <vector>
+#include <bits/stdc++.h>
 
 
 #include <QApplication>
@@ -16,124 +17,227 @@
 #include <map>
 #include <random>
 #include <climits>
+#include <omp.h>      
 
 using namespace std;
 
-static int calculateConflicts(const std::vector<std::vector<int>>& grid){
-    int conflict = 0;
 
-    for (int i = 0; i<9; i++){
-        int count[10] = {0};
-        for (int j = 0; j<9; j++) count [grid[i][j]] ++;
-        for (int v = 1; v<=9; v++)
-            if (count[v] > 1) conflict += count[v]-1;
+int calculateConflicts(const vector<vector<int>>& g, int base)
+{
+    const int N = base * base;
+    int conflicts = 0;
+
+    /* ---------- строки ---------- */
+#pragma omp parallel for reduction(+:conflicts) schedule(static)
+    for (int r = 0; r < N; ++r) {
+        std::array<int, 36> cnt{};           // N ≤ 25 ⇒ 26, берём с запасом
+        for (int c = 0; c < N; ++c) ++cnt[g[r][c]];
+        for (int v = 1; v <= N; ++v) if (cnt[v] > 1) conflicts += cnt[v] - 1;
     }
 
-    for (int i = 0; i<9; i++){
-        int count[10] = {0};
-        for (int j = 0; j<9; j++) count [grid[j][i]] ++;
-        for (int v = 1; v<=9; v++)
-            if (count[v] > 1) conflict += count[v]-1;
+    /* ---------- столбцы ---------- */
+#pragma omp parallel for reduction(+:conflicts) schedule(static)
+    for (int c = 0; c < N; ++c) {
+        std::array<int, 36> cnt{};
+        for (int r = 0; r < N; ++r) ++cnt[g[r][c]];
+        for (int v = 1; v <= N; ++v) if (cnt[v] > 1) conflicts += cnt[v] - 1;
     }
-    return conflict;
+
+    /* ---------- блоки ---------- */
+#pragma omp parallel for collapse(2) reduction(+:conflicts) schedule(static)
+    for (int br = 0; br < N; br += base)
+        for (int bc = 0; bc < N; bc += base) {
+            std::array<int, 36> cnt{};
+            for (int dr = 0; dr < base; ++dr)
+                for (int dc = 0; dc < base; ++dc)
+                    ++cnt[g[br + dr][bc + dc]];
+            for (int v = 1; v <= N; ++v) if (cnt[v] > 1) conflicts += cnt[v] - 1;
+        }
+    return conflicts;
 }
 
 
+// Проверяем, не содержит ли стартовая позиция конфликтов
+bool hasInitialConflicts(const vector<vector<int>>& g, int base)
+{
+    return calculateConflicts(g, base) != 0;
+}
+
+//-------------------------------------------------------------
+//                      Tabu-Search Solver
+//-------------------------------------------------------------
 class TabuSolver {
 public:
-    TabuSolver(const std::vector<std::vector<int>>& initial, int maxIter = 100000, int tabuTenure = 500) 
-    : init (initial), maxIter(maxIter) , tabuTenure(tabuTenure){
-        fixed.assign(9, std::vector<bool> (9, false));
-        for (int i = 0; i < 9; ++i)
-            for (int j = 0; j < 9; ++j)
-                if (init[i][j] != 0)
-                    fixed[i][j] = true;
-        
-        for (int sg = 0; sg < 9; ++sg) {
-            int r0 = (sg / 3) * 3;
-            int c0 = (sg % 3) * 3;
-            std::vector<std::pair<int , int>> cells;
-            for (int di = 0 ; di < 3; di++)
-                for (int dj = 0 ; dj < 3; dj++)
-                    cells.emplace_back(r0+di, c0+dj);
-            subgridCells.push_back(cells);
+    TabuSolver(const vector<vector<int>>& initial,
+               int base,                 // <-- новый параметр
+               int maxIter     = 1000,
+               int tabuTenure  =     10)
+        : init(initial), base(base),
+          N(base * base),
+          maxIter(maxIter), tabuTenure(tabuTenure)
+    {
+        if (int(init.size()) != N)
+            throw runtime_error("Неверная размерность начальной сетки");
+
+        fixed.assign(N, vector<bool>(N, false));
+        for (int r = 0; r < N; ++r)
+            for (int c = 0; c < N; ++c) {
+                if (init[r][c] < 0 || init[r][c] > N)
+                    throw runtime_error("Число вне диапазона 1..N");
+                if (init[r][c] != 0) fixed[r][c] = true;
+            }
+
+        // *** Проверяем стартовую позицию ***
+        if (hasInitialConflicts(init, base))
+            throw runtime_error("Стартовая позиция содержит конфликты — судоку нерешаемо");
+
+        // формируем списки клеток по блокам
+        for (int br = 0; br < N; br += base)
+            for (int bc = 0; bc < N; bc += base) {
+                vector<pair<int,int>> v;
+                for (int dr = 0; dr < base; ++dr)
+                    for (int dc = 0; dc < base; ++dc)
+                        v.emplace_back(br + dr, bc + dc);
+                subgridCells.push_back(move(v));
+            }
+    }
+
+    vector<vector<int>> solve()
+    {
+        grid = init;
+        mt19937 gen(random_device{}());
+
+        // случайно заполняем каждый блок
+        for (auto& cells : subgridCells) {
+            vector<bool> present(N + 1, false);
+            for (auto [r,c] : cells) if (grid[r][c] != 0) present[grid[r][c]] = true;
+
+            vector<int> missing;
+            for (int v = 1; v <= N; ++v) if (!present[v]) missing.push_back(v);
+            shuffle(begin(missing), end(missing), gen);
+
+            int k = 0;
+            for (auto [r,c] : cells)
+                if (grid[r][c] == 0) grid[r][c] = missing[k++];
         }
 
+        int bestConf = calculateConflicts(grid, base);
+        auto bestGrid = grid;
+
+        // (ключ «перестановка двух клеток») → итерация-до-которой-табу
+        unordered_map<uint64_t, int> tabu;  // компактный ключ
+
+        auto key = [this](int r1,int c1,int r2,int c2){
+            return (uint64_t(r1) << 48) | (uint64_t(c1) << 32) |
+                   (uint64_t(r2) << 16) | uint64_t(c2);
+        };
+
+        for (int iter = 0; iter < maxIter && bestConf > 0; ++iter)
+        {
+            int curConf   = calculateConflicts(grid, base);
+            int bestDelta = INT_MAX;
+            tuple<int,int,int,int> bestMove;
+            bool found = false;
+
+            for (auto& cells : subgridCells) {
+                int sz = cells.size();
+                for (int i = 0; i < sz; ++i)
+                    for (int j = i+1; j < sz; ++j) {
+                        auto [r1,c1] = cells[i];
+                        auto [r2,c2] = cells[j];
+                        if (fixed[r1][c1] || fixed[r2][c2]) continue;
+
+                        swap(grid[r1][c1], grid[r2][c2]);
+                        int newConf = calculateConflicts(grid, base);
+                        int delta   = newConf - curConf;
+                        uint64_t k  = key(r1,c1,r2,c2);
+
+                        bool isTabu = tabu.count(k) && tabu[k] > iter;
+                        if ((!isTabu || newConf < bestConf) && delta < bestDelta) {
+                            bestDelta = delta;
+                            bestMove  = {r1,c1,r2,c2};
+                            found = true;
+                        }
+                        swap(grid[r1][c1], grid[r2][c2]);
+                    }
+            }
+            if (!found) break;
+
+            auto [r1,c1,r2,c2] = bestMove;
+            swap(grid[r1][c1], grid[r2][c2]);
+            tabu[key(r1,c1,r2,c2)] = iter + tabuTenure;
+
+            int cur = calculateConflicts(grid, base);
+            if (cur < bestConf) { bestConf = cur; bestGrid = grid; }
+            if (bestConf == 0) break;
+        }
+        return bestGrid;
     }
 
-    vector<vector<int>> solve() {
-        
-    }
-
-private: 
-    vector<vector<int>> init, grid;
+private:
+    const vector<vector<int>> init;
+    vector<vector<int>> grid;
     vector<vector<bool>> fixed;
     vector<vector<pair<int,int>>> subgridCells;
-    int maxIter, tabuTenure;
 
+    const int base;          // сторона блока
+    const int N;             // = base^2, сторона поля
+    const int maxIter;
+    const int tabuTenure;
 };
 
-QString MainWindow::getStyle(int init, int sol, int i, int j){
-    int top = (i % 3 == 0) ? 5 : 1;
-    int left = (j % 3 == 0) ? 5 : 1;
-    int right = ((j + 1) % 3 == 0) ? 5 : 1;
-    int bottom = ((i + 1) % 3 == 0) ? 5 : 1;
-    QString st;
-    if (init == sol){
-        st = QString(R"(
-        QLineEdit {
-            background-color:rgb(230, 255, 255);
-            color:rgb(0, 0, 0);
-            font-weight: bold;
-            font-size: 20px;
-            border-top: %1px solid black;
-            border-left: %2px solid black;
-            border-right: %3px solid black;
-            border-bottom: %4px solid black;
-            qproperty-alignment: AlignCenter;
-        }
-        )").arg(top).arg(left).arg(right).arg(bottom);
 
-    } else {
-        st = QString(R"(
-        QLineEdit {
-            background-color:rgb(181, 214, 214);
-            color:#2e86de;
-            font-weight: bold;
-            font-size: 20px;
-            border-top: %1px solid black;
-            border-left: %2px solid black;
-            border-right: %3px solid black;
-            border-bottom: %4px solid black;
-            qproperty-alignment: AlignCenter;
-        }
-        )").arg(top).arg(left).arg(right).arg(bottom);
-    }
-    return st;
+QString MainWindow::getStyle(int initVal,  // было ли число дано изначально
+                             int row, int col,
+                             int base)
+{
+    const int top    = (row % base == 0)          ? 3 : 1;
+    const int left   = (col % base == 0)          ? 3 : 1;
+    const int right  = ((col + 1) % base == 0)    ? 3 : 1;
+    const int bottom = ((row + 1) % base == 0)    ? 3 : 1;
 
+    // разные цвета: чёрный для исходных, синий для найденных
+    const char* txtColor   = !initVal ? "black"   : "#2e86de";
+    const char* backColor  = !initVal ? "#e6ffff" : "#b5d6d6";
+
+    return QString(
+        "QLineEdit{background:%5;color:%6;font:20px bold;"
+        "border-top:%1px solid black;border-left:%2px solid black;"
+        "border-right:%3px solid black;border-bottom:%4px solid black;"
+        "qproperty-alignment:AlignCenter;}")
+        .arg(top).arg(left).arg(right).arg(bottom)
+        .arg(backColor).arg(txtColor);
 }
 
+void MainWindow::solveSudoku()
+{
+    const int base = baseSelector->value();     // 2,3,4…
+    const int N    = base * base;
 
-void MainWindow::solveSudoku(){
-    std::vector<std::vector<int>> initial (9, std::vector<int>(9));
-    std::vector<std::vector<int>> zeros (9, std::vector<int>(9));
-        for (int i = 0; i < 9; ++i){
-            for (int j = 0; j < 9; ++j){
-                initial[i][j] = gridSpins[i][j]->text().toInt(&ok);
-                if (!ok) {
-                    initial[i][j] = 0;
-                }
-            }
+    // --- считываем поле из интерфейса ---
+    std::vector<std::vector<int>> initial(N, std::vector<int>(N));
+    bool ok;
+    for (int r = 0; r < N; ++r)
+        for (int c = 0; c < N; ++c) {
+            int v = cells[r][c]->text().toInt(&ok);
+            initial[r][c] = ok ? v : 0;         // пустая строка → 0
         }
-        TabuSolver solver(initial);
-        auto solution = solver.solve();
 
-        for (int i = 0; i < 9; ++i)
-            for (int j = 0; j < 9; ++j){
-                gridSpins[i][j]->setText(QString::number(solution[i][j]));
-                auto style = getStyle(initial[i][j], zeros[i][j], i, j);
-                gridSpins[i][j]->setStyleSheet(style);
+    // --- пытаемся решить ---
+    try {
+        TabuSolver solver(initial, base);
+        auto solved = solver.solve();
+
+        // --- вывод результата и окраска ---
+        for (int r = 0; r < N; ++r)
+            for (int c = 0; c < N; ++c) {
+                cells[r][c]->setText(QString::number(solved[r][c]));
+                cells[r][c]->setStyleSheet(
+                    getStyle(initial[r][c], r, c, base));
             }
-
-};
-
+    }
+    catch (const std::exception& e) {           // неверный ввод, нерешаемо…
+        QMessageBox::warning(this, "Sudoku",
+                             QString::fromStdString(e.what()));
+    }
+}
