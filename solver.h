@@ -57,20 +57,18 @@ int calculateConflicts(const vector<vector<int>>& g, int base)
 }
 
 
-// Проверяем, не содержит ли стартовая позиция конфликтов
 bool hasInitialConflicts(const vector<vector<int>>& g, int base)
 {
     return calculateConflicts(g, base) != 0;
 }
 
-//-------------------------------------------------------------
-//                      Tabu-Search Solver
-//-------------------------------------------------------------
+
+
 class TabuSolver {
 public:
     TabuSolver(const vector<vector<int>>& initial,
-               int base,                 // <-- новый параметр
-               int maxIter     = 1000,
+               int base,                 
+               int maxIter     = 10000,
                int tabuTenure  =     10)
         : init(initial), base(base),
           N(base * base),
@@ -87,11 +85,9 @@ public:
                 if (init[r][c] != 0) fixed[r][c] = true;
             }
 
-        // *** Проверяем стартовую позицию ***
         if (hasInitialConflicts(init, base))
             throw runtime_error("Стартовая позиция содержит конфликты — судоку нерешаемо");
 
-        // формируем списки клеток по блокам
         for (int br = 0; br < N; br += base)
             for (int bc = 0; bc < N; bc += base) {
                 vector<pair<int,int>> v;
@@ -180,14 +176,14 @@ private:
     vector<vector<bool>> fixed;
     vector<vector<pair<int,int>>> subgridCells;
 
-    const int base;          // сторона блока
-    const int N;             // = base^2, сторона поля
+    const int base;        
+    const int N;            
     const int maxIter;
     const int tabuTenure;
 };
 
 
-QString MainWindow::getStyle(int initVal,  // было ли число дано изначально
+QString MainWindow::getStyle(int initVal,  
                              int row, int col,
                              int base)
 {
@@ -196,7 +192,6 @@ QString MainWindow::getStyle(int initVal,  // было ли число дано 
     const int right  = ((col + 1) % base == 0)    ? 3 : 1;
     const int bottom = ((row + 1) % base == 0)    ? 3 : 1;
 
-    // разные цвета: чёрный для исходных, синий для найденных
     const char* txtColor   = !initVal ? "black"   : "#2e86de";
     const char* backColor  = !initVal ? "#e6ffff" : "#b5d6d6";
 
@@ -211,24 +206,21 @@ QString MainWindow::getStyle(int initVal,  // было ли число дано 
 
 void MainWindow::solveSudoku()
 {
-    const int base = baseSelector->value();     // 2,3,4…
+    const int base = baseSelector->value();   
     const int N    = base * base;
 
-    // --- считываем поле из интерфейса ---
     std::vector<std::vector<int>> initial(N, std::vector<int>(N));
     bool ok;
     for (int r = 0; r < N; ++r)
         for (int c = 0; c < N; ++c) {
             int v = cells[r][c]->text().toInt(&ok);
-            initial[r][c] = ok ? v : 0;         // пустая строка → 0
+            initial[r][c] = ok ? v : 0;       
         }
 
-    // --- пытаемся решить ---
     try {
         TabuSolver solver(initial, base);
         auto solved = solver.solve();
 
-        // --- вывод результата и окраска ---
         for (int r = 0; r < N; ++r)
             for (int c = 0; c < N; ++c) {
                 cells[r][c]->setText(QString::number(solved[r][c]));

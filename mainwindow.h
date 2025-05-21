@@ -28,9 +28,9 @@ public:
     ~MainWindow() override = default;
 
 public slots:
-    void buildGrid();          // (re)создание поля
-    void refreshSudoku();      // очистка
-    void solveSudoku();        // вызов решателя (пустая заглушка)
+    void buildGrid();         
+    void refreshSudoku();      
+    void solveSudoku();         
 
 
 private:
@@ -43,13 +43,13 @@ private:
 
     QPushButton *solveBtn;
     QPushButton *refreshBtn;
-    QLineEdit* gridSpins[9][9];
+    QLineEdit* gridSpins;
 
-    QString getStyle(int initVal,  // было ли число дано изначально
+    QString getStyle(int initVal,  
                              int row, int col,
                              int base);
 
-    QVector<QVector<QLineEdit*>> cells;   // [row][col]
+    QVector<QVector<QLineEdit*>> cells;  
 
 };
 

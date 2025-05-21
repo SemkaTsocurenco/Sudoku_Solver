@@ -15,20 +15,17 @@ MainWindow::MainWindow(QWidget *parent)
 
     auto *vLay = new QVBoxLayout(centralWidget);
 
-    // --- выбор размера ---
     baseSelector = new QSpinBox(this);
-    baseSelector->setRange(2, 10);    // 2→4×4 … 5→25×25
-    baseSelector->setValue(3);       // по умолчанию 9×9
+    baseSelector->setRange(2, 10);  
+    baseSelector->setValue(3);      
     baseSelector->setPrefix("base = ");
     baseSelector->setToolTip("base² = размер стороны поля");
 
-    // --- сама сетка ---
     gridLayout = new QGridLayout();
     vLay->addWidget(baseSelector);
     vLay->addSpacing(10);
     vLay->addLayout(gridLayout);
 
-    // --- кнопки ---
     solveBtn   = new QPushButton("SOLVE",   this);
     refreshBtn = new QPushButton("REFRESH", this);
 
@@ -64,7 +61,6 @@ MainWindow::MainWindow(QWidget *parent)
 //---------------------------------------------------------
 void MainWindow::buildGrid()
 {
-    // убрать прежние QLineEdit-ы
     QLayoutItem *item;
     while ((item = gridLayout->takeAt(0)) != nullptr) {
         delete item->widget();
@@ -77,7 +73,6 @@ void MainWindow::buildGrid()
     setFixedSize({50 * N,  (N * 50) + (33 * base)});
 
 
-    // ← самый короткий вариант: конструируем готовую матрицу NxN из nullptr
     cells = QVector<QVector<QLineEdit*>>(N, QVector<QLineEdit*>(N, nullptr));
 
     for (int r = 0; r < N; ++r)
@@ -107,11 +102,6 @@ void MainWindow::buildGrid()
 
 
 
-
-
-//---------------------------------------------------------
-//  очистка содержимого ячеек
-//---------------------------------------------------------
 void MainWindow::refreshSudoku()
 {
     for (auto &row : cells)
